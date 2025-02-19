@@ -57,7 +57,9 @@ const randomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1)) + 
             };
         });
 
-        shoesData.push(shoeDetails);
+        if (!shoesData.some(shoe => shoe.url === shoeDetails.url)) {
+            shoesData.push(shoeDetails);
+        }
 
         // Navigate back to the main page
         await page.goBack({ waitUntil: 'networkidle2' });
