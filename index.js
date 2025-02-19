@@ -1,30 +1,74 @@
-PORT = 2400 //seeing something
+const puppeteer = require('puppeteer');
 
-const axios = require('axios')
-const cheerio = require('cheerio')
-const express = require('express')
+const randomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-const app = express()
+(async () => {
+    const browser = await puppeteer.launch({ headless: false });
+    const page = await browser.newPage();
 
-const url = 'https://www.hypedc.com/nz/categories/sale/mens/mens-sale-footwear?pid=nav-sale'
+    // Navigate to the target URL
+    const url = 'https://www.northbeach.co.nz/sale/sale-mens/footwear';
+    await page.goto(url, { waitUntil: 'networkidle2' });
 
-axios(url)
-    .then(response => {
-        const html = response.data
-        const $ = cheerio.load(html)
+    // Wait for the content to load
+    await page.waitForSelector('.ps-category-items.four-wide');
 
-        const shoes = []
-        
-        $('.w-1/2 px-2 py-2 lg:px-4 lg:py-4 xl:w-1/4', html).each(function() {
-            const data = $(this).text()
-            const url = $(this).find('a').attr('href')
+    // Scroll the page gradually to load all products
+    const scrollPage = async (page) => {
+        await page.evaluate(async () => {
+            await new Promise((resolve) => {
+                let totalHeight = 0;
+                const distance = 200;
+                const timer = setInterval(() => {
+                    const scrollHeight = document.body.scrollHeight;
+                    window.scrollBy(0, distance);
+                    totalHeight += distance;
 
-            shoes.push({
-                data, 
-                url
-            })
-        })
-        console.log(shoes)
-    }).catch(err => console.log(err))
+                    if (totalHeight >= scrollHeight) {
+                        clearInterval(timer);
+                        resolve();
+                    }
+                }, 300);
+            });
+        });
+    };
+    await scrollPage(page);
 
-app.listen(PORT, () => console.log('server running on PORT ' + PORT))
+    // Get all product links
+    const productLinks = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('.ps-category-item a')).map(el => el.href);
+    });
+
+    let shoesData = [];
+
+    for (const link of productLinks) {
+        await page.goto(link, { waitUntil: 'networkidle2' });
+
+        await page.waitForSelector('.product-summary__price.s-price');
+
+        // Extract price and URL details
+        const shoeDetails = await page.evaluate(() => {
+            const nowPrice = document.querySelector('.s-price__now')?.innerText || 'N/A';
+            const wasPrice = document.querySelector('.s-price__was')?.innerText || 'N/A';
+            return {
+                url: window.location.href,
+                priceNow: nowPrice,
+                priceWas: wasPrice
+            };
+        });
+
+        shoesData.push(shoeDetails);
+
+        // Navigate back to the main page
+        await page.goBack({ waitUntil: 'networkidle2' });
+
+       
+        await new Promise(r => setTimeout(r, randomDelay(2000, 4000)));
+
+    }
+
+    // Log the scraped data
+    console.log(shoesData);
+
+    await browser.close();
+})();
